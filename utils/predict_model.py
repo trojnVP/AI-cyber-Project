@@ -1,33 +1,48 @@
-import joblib
 import pandas as pd
+import joblib
+import os
 
 # Load the trained model and feature column order
-loaded_model = joblib.load('models/random_forest_model.pkl')
+model = joblib.load('models/random_forest_model.pkl')
 feature_columns = joblib.load('models/feature_columns.pkl')
+encoder = joblib.load('models/label_encoder_country.pkl')
 
-# Example input — make sure it matches the *raw* structure of your training data
-raw_data = pd.DataFrame([{
-    'abuseConfidenceScore': 90,
-    'countryCode': 'US',              # categorical
-    'report_day': 3,
-    'report_hour': 14
-}])
+# Load the dataset to predict on
+data_path = 'C:/Users/admin/Desktop/cyber project final/data/prepared_data.csv'
+df = pd.read_csv(data_path)
 
-# Encode or preprocess the data to match training-time processing
-# For example: if 'countryCode' was one-hot encoded, you must do that here
-# Here's a placeholder — update this block to match your training preprocessing logic
+# Drop unused or non-numeric columns
+columns_to_drop = ['ipAddress', 'domain', 'isp', 'lastReportedAt']
+df = df.drop(columns=[col for col in columns_to_drop if col in df.columns])
 
-# Example label encoding (if used during training):
-# from sklearn.preprocessing import LabelEncoder
-# encoder = joblib.load('models/label_encoder_country.pkl')
-# raw_data['countryCode'] = encoder.transform(raw_data['countryCode'])
+# Encode 'countryCode' if it exists
+if 'countryCode' in df.columns:
+    df['countryCode'] = encoder.transform(df['countryCode'])
 
-# For this example, let's drop the categorical column (if you had done that during training)
-raw_data = raw_data.drop(columns=['countryCode'])
+# Save actual labels if they exist (for evaluation)
+true_labels = df['is_malicious'] if 'is_malicious' in df.columns else None
 
-# Reorder columns to match the training set
-new_data = raw_data.reindex(columns=feature_columns, fill_value=0)
+# Drop target column for prediction
+if 'is_malicious' in df.columns:
+    df = df.drop(columns=['is_malicious'])
+
+# Reorder to match training features
+X = df.reindex(columns=feature_columns, fill_value=0)
 
 # Predict
-predictions = loaded_model.predict(new_data)
-print("Prediction:", predictions)
+predictions = model.predict(X)
+
+# Show predictions
+df['prediction'] = predictions
+print(df[['prediction']].head(10))  # Show first 10 predictions
+
+# Optionally evaluate performance
+if true_labels is not None:
+    from sklearn.metrics import classification_report
+    print("\nModel Evaluation on Given Data:")
+    print(classification_report(true_labels, predictions))
+
+# Save predictions to CSV
+output_path = 'predictions_output.csv'
+df.to_csv(output_path, index=False)
+print(f"\nPredictions saved to {output_path}")
